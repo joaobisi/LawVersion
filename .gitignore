@@ -1,0 +1,75 @@
+## Build results
+[Dd]ebug/
+[Dd]ebugPS/
+[Rr]elease/
+[Rr]eleasePS/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Log]/
+
+## Visual Studio cache/options directory
+.vs/
+
+## Rider/IntelliJ
+.idea/
+*.sln.DotSettings.user
+
+## VS Code
+.vscode/
+
+## User-specific files
+*.rsuser
+*.suo
+*.user
+*.user-rtps
+*.usercache
+*.userosscache
+*.sln.docstates
+
+## Mono/Xamarin/Android
+*.apk
+*.ap_
+*.cxx
+
+## Backup and Archive
+*.bak
+*.cache
+*.ilk
+*.log
+*.meta
+*.obj
+*.pdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## OS-generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+## Local testing scripts
+run-p2p.sh
+run-p2p.bat
