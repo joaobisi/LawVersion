@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option csharp_namespace = "LawVersion.Network";
+
+service VersionSync {
+  // Solicita o bloqueio de um arquivo para edição (Lock)
+  rpc RequestLock (LockRequest) returns (LockResponse);
+
+  // Avisa que terminou de editar e libera o arquivo
+  rpc ReleaseLock (LockRequest) returns (LockResponse);
+
+  // Renova um lock existente (Keep-alive / Lease renewal)
+  rpc RenewLock (LockRequest) returns (LockResponse);
+
+  // Solicita a lista de locks ativos (Sync Inicial ao entrar na rede)
+  rpc GetActiveLocks (EmptyRequest) returns (ActiveLocksResponse);
+
+  // Envia ou solicita os bytes de um arquivo .docx
+  rpc PushVersion (FileFrame) returns (SyncResponse);
+}
+
+message EmptyRequest {}
+
+message LockRequest {
+  string fileName = 1;
+  string lawyerName = 2;
+  string machineId = 3;
+}
+
+message LockResponse {
+  bool isGranted = 1;
+  string currentOwner = 2;
+}
+
+message LockEntry {
+  string fileName = 1;
+  string owner = 2;
+  int64 acquiredAtUtcTicks = 3;
+}
+
+message ActiveLocksResponse {
+  repeated LockEntry locks = 1;
+}
+
+message FileFrame {
+  string fileName = 1;
+  bytes content = 2;
+  string versionHash = 3;
+}
+
+message SyncResponse {
+  bool success = 1;
+  string message = 2;
+}

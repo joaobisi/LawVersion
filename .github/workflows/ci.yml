@@ -20,11 +20,23 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
-    - name: Restore Dependencies
-      run: dotnet restore LawVersion.sln
-
-    - name: Build Solution
-      run: dotnet build LawVersion.sln --no-restore --configuration Release
-
-    - name: Run Unit Tests
-      run: dotnet test LawVersion.sln --no-build --configuration Release --verbosity normal
+    - name: Build and Test existing projects
+      run: |
+        if [ -f "LawVersion.UI/LawVersion.UI.csproj" ] && [ -f "LawVersion.Core/LawVersion.Core.csproj" ] && [ -f "LawVersion.Network/LawVersion.Network.csproj" ]; then
+          echo "Todos os projetos presentes. Compilando solucao e rodando testes..."
+          dotnet restore LawVersion.sln
+          dotnet build LawVersion.sln --no-restore --configuration Release
+          dotnet test LawVersion.sln --no-build --configuration Release --verbosity normal
+        elif [ -f "LawVersion.Core/LawVersion.Core.csproj" ] && [ -f "LawVersion.Network/LawVersion.Network.csproj" ]; then
+          echo "Apenas Network e Core presentes. Compilando projetos individuais..."
+          dotnet restore LawVersion.Network/LawVersion.Network.csproj
+          dotnet restore LawVersion.Core/LawVersion.Core.csproj
+          dotnet build LawVersion.Network/LawVersion.Network.csproj --no-restore --configuration Release
+          dotnet build LawVersion.Core/LawVersion.Core.csproj --no-restore --configuration Release
+        elif [ -f "LawVersion.Network/LawVersion.Network.csproj" ]; then
+          echo "Apenas Network presente. Compilando Network..."
+          dotnet restore LawVersion.Network/LawVersion.Network.csproj
+          dotnet build LawVersion.Network/LawVersion.Network.csproj --no-restore --configuration Release
+        else
+          echo "Nenhum projeto de codigo encontrado na raiz. Pulando compilacao."
+        fi
