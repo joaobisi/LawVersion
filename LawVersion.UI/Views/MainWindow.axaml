@@ -1,0 +1,66 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LawVersion.UI.ViewModels"
+        x:Class="LawVersion.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="LawVersion P2P" 
+        Width="600" Height="500"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="20">
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="0,0,0,20">
+                <Grid ColumnDefinitions="*, Auto">
+                    <StackPanel>
+                        <TextBlock Text="Meus Documentos" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding LawyerName, StringFormat='Logado como: {0}'}" FontSize="12" Foreground="#2196F3"/>
+                    </StackPanel>
+                    
+                    <Button Grid.Column="1" 
+                            Content="Importar" 
+                            Command="{Binding ImportDocumentCommand}"
+                            CommandParameter="{Binding $parent[Window]}"
+                            Background="#4CAF50" Foreground="White"/>
+                </Grid>
+                <Separator/>
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Bottom" 
+                       Text="{Binding StatusMessage}" 
+                       FontSize="11" Foreground="Gray" Margin="0,10,0,0"/>
+
+            <Expander DockPanel.Dock="Bottom" Header="Ver Histórico Selecionado" Margin="0,10,0,0">
+                <ScrollViewer Height="100">
+                    <TextBlock Text="{Binding SelectedFileHistory}" FontSize="10" TextWrapping="Wrap"/>
+                </ScrollViewer>
+            </Expander>
+
+            <ListBox ItemsSource="{Binding Documents}" Background="#F9F9F9" CornerRadius="8">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="10">
+                            <Grid ColumnDefinitions="Auto, *, Auto">
+                                <PathIcon Grid.Column="0" Width="18" 
+                                          Data="M12,17V15H14V17H12M18,20V10H6V20H18M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" 
+                                          Foreground="{Binding StatusColor}"/>
+                    
+                                <StackPanel Grid.Column="1" Margin="15,0">
+                                    <TextBlock Text="{Binding Name}" FontWeight="Medium"/>
+                                    <TextBlock Text="Disponível" FontSize="10" Foreground="Gray" IsVisible="{Binding !IsLocked}"/>
+                                    <TextBlock Text="{Binding CurrentOwner, StringFormat='Em edição por: {0}'}" 
+                                               FontSize="10" Foreground="#E53935" IsVisible="{Binding IsLocked}"/>
+                                </StackPanel>
+
+                                <Button Grid.Column="2" 
+                                        Content="Histórico" 
+                                        FontSize="10"
+                                        Command="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).ShowHistoryCommand, FallbackValue={x:Null}}"
+                                        CommandParameter="{Binding}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </Grid>
+</Window>
