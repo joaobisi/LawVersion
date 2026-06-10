@@ -2,8 +2,11 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Net;
 using Grpc.Net.Client;
+using Grpc.Core;
+using Google.Protobuf;
 using LawVersion.Network;
 using LawVersion.Network.Services;
+using System.Text.Json;
 
 namespace LawVersion.Core;
 
@@ -29,6 +32,7 @@ public class P2PManager : IDisposable, ILockEventBus
     private static readonly TimeSpan LockRenewalInterval = TimeSpan.FromSeconds(30);
 
     private readonly ConcurrentDictionary<string, bool> _localLocks = new();
+    private readonly ConcurrentDictionary<string, List<string>> _sharedPeers = new();
 
     public event Action? OnFolderChanged;
     public event Action<string, string>? OnPeerDetected;
@@ -70,10 +74,146 @@ public class P2PManager : IDisposable, ILockEventBus
         // Registra este manager como receptor de eventos do gRPC
         VersionSyncServiceImpl.RegisterEventBus(this);
         
+        LoadShares();
         ConfigurarEventos();
         StartLockRenewalTimer();
         
         _logger.LogInformation("[SISTEMA] LawVersion ativo para {Name} na porta {Port}", _lawyerName, _port);
+    }
+
+    private string GetSharesFilePath()
+    {
+        var baseDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "LawVersion"
+        );
+        
+        if (!Directory.Exists(baseDir))
+        {
+            Directory.CreateDirectory(baseDir);
+        }
+
+        var safeLawyer = string.Concat(_lawyerName.Split(Path.GetInvalidFileNameChars()));
+        
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var bytes = System.Text.Encoding.UTF8.GetBytes(_workingDirectory);
+        var hashBytes = sha256.ComputeHash(bytes);
+        var hashStr = Convert.ToHexString(hashBytes).Substring(0, 12).ToLowerInvariant();
+
+        return Path.Combine(baseDir, $"shares_{safeLawyer}_{hashStr}.json");
+    }
+
+    private void LoadShares()
+    {
+        var newPath = GetSharesFilePath();
+        var oldPath = Path.Combine(_workingDirectory, "shares.json");
+
+        // Migração automática do arquivo antigo do workspace para o AppData
+        if (!File.Exists(newPath) && File.Exists(oldPath))
+        {
+            try
+            {
+                File.Copy(oldPath, newPath, true);
+                File.Delete(oldPath);
+                _logger.LogInformation("[P2P] Migrado shares.json do workspace para a pasta de dados do sistema.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[P2P] Falha ao migrar shares.json antigo");
+            }
+        }
+
+        var path = File.Exists(newPath) ? newPath : oldPath;
+        if (!File.Exists(path)) return;
+
+        try
+        {
+            var json = File.ReadAllText(path);
+            var dict = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json);
+            if (dict != null)
+            {
+                foreach (var kvp in dict)
+                {
+                    _sharedPeers[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[P2P] Erro ao carregar compartilhamentos");
+        }
+    }
+
+    private void SaveShares()
+    {
+        var path = GetSharesFilePath();
+        try
+        {
+            var json = JsonSerializer.Serialize(_sharedPeers);
+            File.WriteAllText(path, json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[P2P] Erro ao salvar compartilhamentos");
+        }
+    }
+
+    public List<string> GetActivePeerNames() => _knownPeers.Keys.ToList();
+
+    public bool IsFileShared(string fileName) => _sharedPeers.TryGetValue(fileName, out var list) && list.Count > 0;
+    
+    public List<string> GetSharedPeersForFile(string fileName) => _sharedPeers.TryGetValue(fileName, out var list) ? list : new List<string>();
+
+    public string GetFileOwner(string fileName)
+    {
+        if (_localLocks.ContainsKey(fileName))
+            return _lawyerName;
+            
+        return VersionSyncServiceImpl.GetActiveLockOwner(fileName);
+    }
+
+    public async Task ShareFileWithAsync(string fileName, string peerName)
+    {
+        var list = _sharedPeers.GetOrAdd(fileName, _ => new List<string>());
+        lock (list)
+        {
+            if (!list.Contains(peerName))
+            {
+                list.Add(peerName);
+            }
+        }
+        SaveShares();
+        _logger.LogInformation("[P2P] Arquivo {File} compartilhado com {Peer}", fileName, peerName);
+        
+        if (_knownPeers.TryGetValue(peerName, out var peer))
+        {
+            await SendFileToSinglePeerAsync(peer, fileName);
+        }
+    }
+
+    private async Task SendFileToSinglePeerAsync(PeerInfo peer, string fileName)
+    {
+        var fullPath = Path.Combine(_workingDirectory, fileName);
+        if (!File.Exists(fullPath)) return;
+        try
+        {
+            var content = await File.ReadAllBytesAsync(fullPath);
+            var frame = new FileFrame
+            {
+                FileName = fileName,
+                Content = ByteString.CopyFrom(content),
+                VersionHash = DateTime.UtcNow.Ticks.ToString()
+            };
+            using var channel = GrpcChannel.ForAddress(peer.GrpcEndpoint);
+            var client = new VersionSync.VersionSyncClient(channel);
+            var metadata = new Metadata { { "sender-name", _lawyerName } };
+            await client.PushVersionAsync(frame, metadata);
+            _logger.LogInformation("[P2P] Arquivo {File} enviado para {Peer}", fileName, peer.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[P2P] Falha ao enviar arquivo para {Peer}: {Error}", peer.Name, ex.Message);
+        }
     }
 
     private void ConfigurarEventos()
@@ -89,10 +229,56 @@ public class P2PManager : IDisposable, ILockEventBus
     }
     
     void ILockEventBus.OnRemoteLockReceived(string fileName, string owner) 
-        => OnFileLocked?.Invoke(fileName, owner);
+    {
+        // Se o arquivo for compartilhado ou recebido do dono, atualiza a UI
+        if (_sharedPeers.TryGetValue(fileName, out var list) && list.Contains(owner))
+        {
+            OnFileLocked?.Invoke(fileName, owner);
+        }
+    }
     
-    void ILockEventBus.OnRemoteUnlockReceived(string fileName) 
-        => OnFileUnlocked?.Invoke(fileName);
+    void ILockEventBus.OnRemoteUnlockReceived(string fileName, string sender) 
+    {
+        if (string.IsNullOrEmpty(sender) || (_sharedPeers.TryGetValue(fileName, out var list) && list.Contains(sender)))
+        {
+            OnFileUnlocked?.Invoke(fileName);
+        }
+    }
+
+    void ILockEventBus.OnRemoteFileReceived(string fileName, byte[] content, string sender)
+    {
+        try
+        {
+            var fullPath = Path.Combine(_workingDirectory, fileName);
+            
+            // Aceita o arquivo e registra o remetente automaticamente no círculo de compartilhamento
+            var list = _sharedPeers.GetOrAdd(fileName, _ => new List<string>());
+            lock (list)
+            {
+                if (!list.Contains(sender))
+                {
+                    list.Add(sender);
+                    SaveShares();
+                }
+            }
+            
+            _watcher.BeginSync(fileName);
+            
+            File.WriteAllBytes(fullPath, content);
+            _versionService.CommitFile(fileName, $"Sync: {fileName} recebido de {sender}");
+            
+            _logger.LogInformation("[P2P] Arquivo sincronizado: {File} de {Sender}", fileName, sender);
+            OnFolderChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[P2P] Erro ao sincronizar arquivo: {File}", fileName);
+        }
+        finally
+        {
+            Task.Delay(2000).ContinueWith(_ => _watcher.EndSync(fileName));
+        }
+    }
 
     public async Task StartNetworkAsync()
     {
@@ -136,8 +322,11 @@ public class P2PManager : IDisposable, ILockEventBus
             
             foreach (var lockEntry in response.Locks)
             {
-                _logger.LogDebug("[P2P] Sync: {File} travado por {Owner}", lockEntry.FileName, lockEntry.Owner);
-                OnFileLocked?.Invoke(lockEntry.FileName, lockEntry.Owner);
+                if (_sharedPeers.TryGetValue(lockEntry.FileName, out var list) && list.Contains(peer.Name))
+                {
+                    _logger.LogDebug("[P2P] Sync: {File} travado por {Owner}", lockEntry.FileName, lockEntry.Owner);
+                    OnFileLocked?.Invoke(lockEntry.FileName, lockEntry.Owner);
+                }
             }
         }
         catch (Exception ex)
@@ -149,42 +338,92 @@ public class P2PManager : IDisposable, ILockEventBus
     public List<string> GetFileHistory(string fileName) => 
         _disposed ? [] : _versionService.GetCommitHistory(fileName);
 
-
     // Notifica todos os pares conhecidos via gRPC de que um arquivo foi travado localmente.
     private async Task BroadcastLock(string fileName)
     {
-        _logger.LogInformation("[P2P] Notificando rede: LOCK em {File}", fileName);
         _localLocks[fileName] = true;
-        
         OnFileLocked?.Invoke(fileName, _lawyerName);
         
-        // Envia para todos os pares via gRPC
+        if (!_sharedPeers.TryGetValue(fileName, out var sharedList) || sharedList.Count == 0) return;
+
+        _logger.LogInformation("[P2P] Notificando rede (Lock): {File}", fileName);
         var request = new LockRequest 
         { 
             FileName = fileName, 
             LawyerName = _lawyerName 
         };
 
-        var tasks = _knownPeers.Values.Select(peer => SendLockToPeerAsync(peer, request));
+        var tasks = _knownPeers.Values
+            .Where(peer => sharedList.Contains(peer.Name))
+            .Select(peer => SendLockToPeerAsync(peer, request));
         await Task.WhenAll(tasks);
     }
 
     // Notifica todos os pares conhecidos via gRPC de que um arquivo foi liberado.
     private async Task BroadcastUnlock(string fileName)
     {
-        _logger.LogInformation("[P2P] Notificando rede: UNLOCK em {File}", fileName);
         _localLocks.TryRemove(fileName, out _);
-        
         OnFileUnlocked?.Invoke(fileName);
         
+        if (!_sharedPeers.TryGetValue(fileName, out var sharedList) || sharedList.Count == 0) return;
+
+        _logger.LogInformation("[P2P] Notificando rede (Unlock): {File}", fileName);
         var request = new LockRequest 
         { 
             FileName = fileName, 
             LawyerName = _lawyerName 
         };
 
-        var tasks = _knownPeers.Values.Select(peer => SendUnlockToPeerAsync(peer, request));
+        var tasks = _knownPeers.Values
+            .Where(peer => sharedList.Contains(peer.Name))
+            .Select(peer => SendUnlockToPeerAsync(peer, request));
         await Task.WhenAll(tasks);
+        
+        // Envia o arquivo atualizado para todos os peers do círculo
+        await SyncFileToPeers(fileName);
+    }
+
+    private async Task SyncFileToPeers(string fileName)
+    {
+        if (!_sharedPeers.TryGetValue(fileName, out var sharedList) || sharedList.Count == 0) return;
+
+        var fullPath = Path.Combine(_workingDirectory, fileName);
+        if (!File.Exists(fullPath)) return;
+        
+        try
+        {
+            var content = await File.ReadAllBytesAsync(fullPath);
+            var frame = new FileFrame
+            {
+                FileName = fileName,
+                Content = ByteString.CopyFrom(content),
+                VersionHash = DateTime.UtcNow.Ticks.ToString()
+            };
+            
+            var tasks = _knownPeers.Values
+                .Where(peer => sharedList.Contains(peer.Name))
+                .Select(async peer =>
+                {
+                    try
+                     {
+                         using var channel = GrpcChannel.ForAddress(peer.GrpcEndpoint);
+                         var client = new VersionSync.VersionSyncClient(channel);
+                         var metadata = new Metadata { { "sender-name", _lawyerName } };
+                         await client.PushVersionAsync(frame, metadata);
+                         _logger.LogInformation("[P2P] Arquivo {File} enviado para {Peer}", fileName, peer.Name);
+                     }
+                     catch (Exception ex)
+                     {
+                         _logger.LogWarning("[P2P] Falha ao enviar arquivo para {Peer}: {Error}", peer.Name, ex.Message);
+                     }
+                });
+            
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[P2P] Erro ao ler arquivo para sync: {File}", fileName);
+        }
     }
 
     private async Task SendLockToPeerAsync(PeerInfo peer, LockRequest request)
@@ -228,13 +467,15 @@ public class P2PManager : IDisposable, ILockEventBus
         {
             foreach (var fileName in _localLocks.Keys)
             {
+                if (!_sharedPeers.TryGetValue(fileName, out var sharedList) || sharedList.Count == 0) continue;
+
                 var request = new LockRequest 
                 { 
                     FileName = fileName, 
                     LawyerName = _lawyerName 
                 };
 
-                foreach (var peer in _knownPeers.Values)
+                foreach (var peer in _knownPeers.Values.Where(p => sharedList.Contains(p.Name)))
                 {
                     try
                     {
