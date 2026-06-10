@@ -1,66 +1,247 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:LawVersion.UI.ViewModels"
+        xmlns:converters="using:LawVersion.UI.Converters"
         x:Class="LawVersion.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
+        x:Name="RootWindow"
         Title="LawVersion P2P" 
-        Width="600" Height="500"
+        Width="700" Height="550"
         WindowStartupLocation="CenterScreen">
 
-    <Grid Margin="20">
-        <DockPanel>
-            <StackPanel DockPanel.Dock="Top" Spacing="10" Margin="0,0,0,20">
+    <Window.Resources>
+        <converters:TupleConverter x:Key="TupleConverter"/>
+    </Window.Resources>
+
+    <Grid>
+        <Grid Margin="24" RowDefinitions="Auto, *, Auto">
+            <Border Grid.Row="0" 
+                    Background="#1E1E2E" CornerRadius="12" 
+                    Padding="20,16" Margin="0,0,0,16">
                 <Grid ColumnDefinitions="*, Auto">
-                    <StackPanel>
-                        <TextBlock Text="Meus Documentos" FontSize="20" FontWeight="Bold"/>
-                        <TextBlock Text="{Binding LawyerName, StringFormat='Logado como: {0}'}" FontSize="12" Foreground="#2196F3"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="LawVersion" FontSize="22" FontWeight="Bold" Foreground="#CDD6F4"/>
+                        <TextBlock Text="{Binding LawyerName, StringFormat='👤 {0}'}" 
+                                   FontSize="13" Foreground="#89B4FA"/>
                     </StackPanel>
                     
                     <Button Grid.Column="1" 
-                            Content="Importar" 
-                            Command="{Binding ImportDocumentCommand}"
-                            CommandParameter="{Binding $parent[Window]}"
-                            Background="#4CAF50" Foreground="White"/>
+                            Content="＋ Importar" 
+                            Command="{Binding OpenImportModalCommand}"
+                            Background="#89B4FA" Foreground="#1E1E2E"
+                            FontWeight="SemiBold"
+                            Padding="16,8" CornerRadius="8"/>
                 </Grid>
-                <Separator/>
-            </StackPanel>
+            </Border>
 
-            <TextBlock DockPanel.Dock="Bottom" 
-                       Text="{Binding StatusMessage}" 
-                       FontSize="11" Foreground="Gray" Margin="0,10,0,0"/>
+            <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="12" Padding="4">
+                <ListBox ItemsSource="{Binding Documents}" 
+                         Background="Transparent" CornerRadius="8">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="12,10" Margin="4,2" 
+                                    CornerRadius="8" Background="#181825">
+                                <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto">
+                                    <Border Grid.Column="0" 
+                                            Width="36" Height="36" CornerRadius="8"
+                                            Background="{Binding StatusColor}" Opacity="0.15">
+                                        <PathIcon Width="18" Height="18"
+                                                  Data="{Binding StatusIcon}" 
+                                                  Foreground="{Binding StatusColor}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                                    </Border>
+                            
+                                    <StackPanel Grid.Column="1" Margin="14,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" 
+                                                   FontWeight="Medium" FontSize="14" 
+                                                   Foreground="#CDD6F4"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding StatusText}" 
+                                                       FontSize="11" 
+                                                       Foreground="{Binding StatusColor}"/>
+                                            <TextBlock Text="•" FontSize="11" Foreground="#585B70"/>
+                                            <TextBlock Text="{Binding SharingText}" 
+                                                       FontSize="11" 
+                                                       Foreground="#A6ADC8"/>
+                                        </StackPanel>
+                                    </StackPanel>
 
-            <Expander DockPanel.Dock="Bottom" Header="Ver Histórico Selecionado" Margin="0,10,0,0">
-                <ScrollViewer Height="100">
-                    <TextBlock Text="{Binding SelectedFileHistory}" FontSize="10" TextWrapping="Wrap"/>
-                </ScrollViewer>
-            </Expander>
+                                    <Button Grid.Column="2" 
+                                            Content="Abrir"
+                                            FontSize="11" Padding="12,6" CornerRadius="6"
+                                            Background="#45475A" Foreground="#CDD6F4"
+                                            IsVisible="{Binding !IsLockedByOther}"
+                                            Command="{Binding #RootWindow.DataContext.OpenDocumentCommand, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding}"
+                                            Margin="0,0,6,0"/>
 
-            <ListBox ItemsSource="{Binding Documents}" Background="#F9F9F9" CornerRadius="8">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="10">
-                            <Grid ColumnDefinitions="Auto, *, Auto">
-                                <PathIcon Grid.Column="0" Width="18" 
-                                          Data="M12,17V15H14V17H12M18,20V10H6V20H18M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" 
-                                          Foreground="{Binding StatusColor}"/>
+                                    <Button Grid.Column="3" 
+                                            Content="Compartilhar" 
+                                            FontSize="11" Padding="12,6" CornerRadius="6"
+                                            Background="#89B4FA" Foreground="#1E1E2E"
+                                            Command="{Binding #RootWindow.DataContext.OpenShareModalCommand, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding}"
+                                            Margin="0,0,6,0"/>
+
+                                    <Button Grid.Column="4" 
+                                            Content="Histórico" 
+                                            FontSize="11" Padding="12,6" CornerRadius="6"
+                                            Background="#313244" Foreground="#A6ADC8"
+                                            Command="{Binding #RootWindow.DataContext.ShowHistoryCommand, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding}"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <Border Grid.Row="2" 
+                    Background="#1E1E2E" CornerRadius="8"
+                    Padding="12,8" Margin="0,12,0,0">
+                <TextBlock Text="{Binding StatusMessage}" 
+                           FontSize="11" Foreground="#6C7086"/>
+            </Border>
+        </Grid>
+
+        <Grid Background="#A0000000" 
+              IsVisible="{Binding IsHistoryVisible}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="#1E1E2E" CornerRadius="12" BorderBrush="#313244" BorderThickness="1"
+                    Width="500" Height="380" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="24">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*, Auto" Margin="0,0,0,16">
+                        <TextBlock Text="{Binding SelectedDocumentName, StringFormat='📋 Histórico: {0}'}" 
+                                   FontSize="16" FontWeight="Bold" Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="✕" 
+                                Command="{Binding CloseHistoryCommand}"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="#F38BA8" Padding="6" FontSize="16"
+                                Cursor="Hand"/>
+                    </Grid>
                     
-                                <StackPanel Grid.Column="1" Margin="15,0">
-                                    <TextBlock Text="{Binding Name}" FontWeight="Medium"/>
-                                    <TextBlock Text="Disponível" FontSize="10" Foreground="Gray" IsVisible="{Binding !IsLocked}"/>
-                                    <TextBlock Text="{Binding CurrentOwner, StringFormat='Em edição por: {0}'}" 
-                                               FontSize="10" Foreground="#E53935" IsVisible="{Binding IsLocked}"/>
-                                </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding SelectedFileHistoryLines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,4" Padding="12,10" Background="#181825" CornerRadius="8">
+                                        <Grid ColumnDefinitions="Auto, *">
+                                            <TextBlock Grid.Column="0" Text="🔹" Foreground="#89B4FA" Margin="0,0,8,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
 
-                                <Button Grid.Column="2" 
-                                        Content="Histórico" 
-                                        FontSize="10"
-                                        Command="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).ShowHistoryCommand, FallbackValue={x:Null}}"
-                                        CommandParameter="{Binding}"/>
-                            </Grid>
+        <Grid Background="#A0000000" 
+              IsVisible="{Binding IsShareModalVisible}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="#1E1E2E" CornerRadius="12" BorderBrush="#313244" BorderThickness="1"
+                    Width="450" Height="320" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="24">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*, Auto" Margin="0,0,0,16">
+                        <TextBlock Text="{Binding SharingDocument.Name, StringFormat='🔗 Compartilhar: {0}'}" 
+                                   FontSize="16" FontWeight="Bold" Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="✕" 
+                                Command="{Binding CloseShareModalCommand}"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="#F38BA8" Padding="6" FontSize="16"
+                                Cursor="Hand"/>
+                    </Grid>
+                    
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Grid>
+                            <TextBlock Text="Nenhum colega detectado na rede local." 
+                                       Foreground="#A6ADC8" FontSize="13" HorizontalAlignment="Center" 
+                                       IsVisible="{Binding !SharePeers.Count}" Margin="0,40,0,0"/>
+                            
+                            <ItemsControl ItemsSource="{Binding SharePeers}" IsVisible="{Binding SharePeers.Count}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,4" Padding="12,8" Background="#181825" CornerRadius="8">
+                                            <Grid ColumnDefinitions="*, Auto">
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <TextBlock Text="👤" Foreground="#89B4FA" FontSize="14"/>
+                                                    <TextBlock Text="{Binding Name}" FontSize="13" Foreground="#CDD6F4"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" 
+                                                        Content="{Binding ButtonText}"
+                                                        Command="{Binding #RootWindow.DataContext.ConfirmShareCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Background="{Binding ButtonColor}" 
+                                                        Foreground="{Binding ButtonTextColor}"
+                                                        IsEnabled="{Binding CanShare}"
+                                                        FontSize="11" Padding="10,4" CornerRadius="6"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Grid Background="#A0000000" 
+              IsVisible="{Binding IsImportModalVisible}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="#1E1E2E" CornerRadius="12" BorderBrush="#313244" BorderThickness="1"
+                    Width="450" Height="320" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="24">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*, Auto" Margin="0,0,0,16">
+                        <TextBlock Text="＋ Importar Documento" 
+                                   FontSize="16" FontWeight="Bold" Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="✕" 
+                                Command="{Binding CloseImportModalCommand}"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="#F38BA8" Padding="6" FontSize="16"
+                                Cursor="Hand"/>
+                    </Grid>
+                    
+                    <StackPanel Spacing="16" VerticalAlignment="Center">
+                        <Border BorderBrush="#313244" BorderThickness="1" CornerRadius="8" Padding="16" Background="#181825">
+                            <StackPanel Spacing="8" HorizontalAlignment="Center">
+                                <Button Content="Selecionar Arquivo (.docx)"
+                                        Command="{Binding SelectImportFileCommand}"
+                                        CommandParameter="{Binding $parent[Window]}"
+                                        Background="#45475A" Foreground="#CDD6F4"
+                                        HorizontalAlignment="Center" Padding="14,8" CornerRadius="6"/>
+                                <TextBlock Text="{Binding ImportFileName}" 
+                                           HorizontalAlignment="Center"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#89B4FA"
+                                           TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                <TextBlock Text="{Binding ImportFilePath}" 
+                                           HorizontalAlignment="Center"
+                                           FontSize="11" Foreground="#6C7086"
+                                           TextWrapping="Wrap" MaxHeight="40"/>
+                            </StackPanel>
                         </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </DockPanel>
+                        
+                        <Grid ColumnDefinitions="*, *">
+                            <Button Grid.Column="0" Content="Cancelar" 
+                                    Command="{Binding CloseImportModalCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Background="Transparent" Foreground="#F38BA8" Padding="10" Margin="0,0,6,0"/>
+                            <Button Grid.Column="1" Content="Confirmar" 
+                                    Command="{Binding ConfirmImportCommand}"
+                                    IsEnabled="{Binding ImportFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Background="#89B4FA" Foreground="#1E1E2E" Padding="10" Margin="6,0,0,0"
+                                    FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

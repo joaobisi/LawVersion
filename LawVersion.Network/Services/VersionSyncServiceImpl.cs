@@ -30,13 +30,16 @@ public class VersionSyncServiceImpl : VersionSync.VersionSyncBase
     private static Timer? _cleanupTimer;
     
     // Event bus para notificar o P2PManager sem acoplamento via static events.
-    // Ainda mantemos os static events para compatibilidade com testes existentes,
-    // mas o caminho preferido é via ILockEventBus.
     private static ILockEventBus? _eventBus;
-    
-    // Eventos estáticos mantidos para backwards compatibility com testes
-    public static event Action<string, string>? OnRemoteLockReceived;
-    public static event Action<string>? OnRemoteUnlockReceived;
+
+    public static string GetActiveLockOwner(string fileName)
+    {
+        if (ActiveLocks.TryGetValue(fileName, out var record))
+        {
+            return record.Owner;
+        }
+        return string.Empty;
+    }
 
     /// <summary>
     /// Registra o event bus para recebimento de eventos de lock.
@@ -72,16 +75,14 @@ public class VersionSyncServiceImpl : VersionSync.VersionSyncBase
     public static void ReceiveRemoteLock(string fileName, string owner)
     {
         _eventBus?.OnRemoteLockReceived(fileName, owner);
-        OnRemoteLockReceived?.Invoke(fileName, owner);
     }
 
     /// <summary>
     /// Método usado para disparar o evento de Unlock.
     /// </summary>
-    public static void ReceiveRemoteUnlock(string fileName)
+    public static void ReceiveRemoteUnlock(string fileName, string sender)
     {
-        _eventBus?.OnRemoteUnlockReceived(fileName);
-        OnRemoteUnlockReceived?.Invoke(fileName);
+        _eventBus?.OnRemoteUnlockReceived(fileName, sender);
     }
 
     public override Task<LockResponse> RequestLock(LockRequest request, ServerCallContext context)
@@ -129,7 +130,7 @@ public class VersionSyncServiceImpl : VersionSync.VersionSyncBase
     {
         if (ActiveLocks.TryRemove(request.FileName, out _))
         {
-            ReceiveRemoteUnlock(request.FileName);
+            ReceiveRemoteUnlock(request.FileName, request.LawyerName);
         }
         
         return Task.FromResult(new LockResponse { IsGranted = true });
@@ -187,11 +188,16 @@ public class VersionSyncServiceImpl : VersionSync.VersionSyncBase
         var bytesCount = request.Content?.Length ?? 0;
         Console.WriteLine($"[gRPC] Arquivo recebido: {request.FileName} | Hash: {request.VersionHash} | Tamanho: {bytesCount} bytes");
         
-        // TODO: Implementar salvamento no disco + integração Git (Fase 2)
+        if (request.Content != null && request.Content.Length > 0)
+        {
+            var sender = context.RequestHeaders.FirstOrDefault(h => h.Key == "sender-name")?.Value ?? "Desconhecido";
+            _eventBus?.OnRemoteFileReceived(request.FileName, request.Content.ToByteArray(), sender);
+        }
+        
         return Task.FromResult(new SyncResponse 
         { 
             Success = true, 
-            Message = "Arquivo recebido e processado." 
+            Message = "Arquivo recebido e sincronizado." 
         });
     }
 
@@ -210,7 +216,7 @@ public class VersionSyncServiceImpl : VersionSync.VersionSyncBase
                 if (ActiveLocks.TryRemove(kvp.Key, out _))
                 {
                     Console.WriteLine($"[gRPC] Lock expirado removido: {kvp.Key} (dono: {kvp.Value.Owner})");
-                    ReceiveRemoteUnlock(kvp.Key);
+                    ReceiveRemoteUnlock(kvp.Key, kvp.Value.Owner);
                 }
             }
         }

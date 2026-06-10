@@ -14,5 +14,10 @@ public interface ILockEventBus
     /// <summary>
     /// Chamado quando um unlock é recebido de um par remoto via gRPC.
     /// </summary>
-    void OnRemoteUnlockReceived(string fileName);
+    void OnRemoteUnlockReceived(string fileName, string sender);
+    
+    /// <summary>
+    /// Chamado quando um arquivo é recebido de um par remoto via PushVersion.
+    /// </summary>
+    void OnRemoteFileReceived(string fileName, byte[] content, string sender);
 }

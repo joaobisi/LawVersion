@@ -9,6 +9,7 @@ public class DocumentWatcher : IDisposable
     private readonly IVersionControlService _versionService;
     private readonly ILogger<DocumentWatcher> _logger;
     private readonly ConcurrentDictionary<string, Timer> _debounceTimers = new();
+    private readonly HashSet<string> _syncingFiles = new();
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(1500);
 
     public event Action<object, FileSystemEventArgs>? FileChanged;
@@ -34,9 +35,13 @@ public class DocumentWatcher : IDisposable
         _logger.LogInformation("Monitoramento iniciado na pasta: {Path}", path);
     }
 
+    public void BeginSync(string fileName) => _syncingFiles.Add(fileName);
+    public void EndSync(string fileName) => _syncingFiles.Remove(fileName);
+
     private void OnFileAction(FileSystemEventArgs e)
     {
         if (string.IsNullOrEmpty(e.Name)) return;
+        if (_syncingFiles.Contains(e.Name)) return;
 
         // Tenta extrair o nome original se for um lock file
         var originalFile = ExtractOriginalFileName(e.Name);
