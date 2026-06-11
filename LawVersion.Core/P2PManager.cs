@@ -338,6 +338,19 @@ public class P2PManager : IDisposable, ILockEventBus
     public List<string> GetFileHistory(string fileName) => 
         _disposed ? [] : _versionService.GetCommitHistory(fileName);
 
+    public void RestoreFileToVersion(string fileName, string commitSha)
+    {
+        if (_disposed) return;
+
+        var owner = GetFileOwner(fileName);
+        if (!string.IsNullOrEmpty(owner) && owner != _lawyerName)
+        {
+            throw new InvalidOperationException($"Não é possível restaurar: o arquivo está bloqueado por {owner}.");
+        }
+
+        _versionService.RestoreFileVersion(fileName, commitSha);
+    }
+
     // Notifica todos os pares conhecidos via gRPC de que um arquivo foi travado localmente.
     private async Task BroadcastLock(string fileName)
     {
