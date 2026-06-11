@@ -127,9 +127,17 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,4" Padding="12,10" Background="#181825" CornerRadius="8">
-                                        <Grid ColumnDefinitions="Auto, *">
-                                            <TextBlock Grid.Column="0" Text="🔹" Foreground="#89B4FA" Margin="0,0,8,0"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap"/>
+                                        <Grid ColumnDefinitions="Auto, *, Auto">
+                                            <TextBlock Grid.Column="0" Text="🔹" Foreground="#89B4FA" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                            
+                                            <Button Grid.Column="2" Content="Restaurar"
+                                                    Command="{Binding #RootWindow.DataContext.RestoreVersionCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Background="#A6E3A1" Foreground="#1E1E2E"
+                                                    FontSize="10" Padding="8,4" CornerRadius="4"
+                                                    VerticalAlignment="Center" Margin="8,0,0,0"
+                                                    Cursor="Hand"/>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

@@ -128,6 +128,29 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void RestoreVersion(string? historyLine)
+    {
+        if (string.IsNullOrEmpty(historyLine) || string.IsNullOrEmpty(SelectedDocumentName) || _p2P == null) return;
+
+        try
+        {
+            var parts = historyLine.Split('|');
+            if (parts.Length < 1) return;
+            var sha = parts[0].Trim();
+
+            _p2P.RestoreFileToVersion(SelectedDocumentName, sha);
+            StatusMessage = $"Versão {sha} do arquivo '{SelectedDocumentName}' restaurada com sucesso!";
+            IsHistoryVisible = false;
+            
+            RefreshFiles();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erro ao restaurar: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private void OpenShareModal(DocumentItem? doc)
     {
         if (doc == null || _p2P == null) return;
