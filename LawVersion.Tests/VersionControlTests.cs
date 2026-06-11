@@ -43,6 +43,39 @@ public class VersionControlTests : IDisposable
         history.Any(h => h.Contains("Versao Inicial")).Should().BeTrue();
     }
 
+    [Fact]
+    public void Deve_Restaurar_Versao_Anterior_Do_Arquivo()
+    {
+        var service = new VersionControlService(_testPath);
+        service.InitializeRepository(_testPath);
+        
+        string fileName = "contrato.docx";
+        string fullPath = Path.Combine(_testPath, fileName);
+        
+        // Escreve e comita versão 1
+        File.WriteAllText(fullPath, "Versao Um - Conteudo Original");
+        service.CommitFile(fileName, "Versao 1");
+        
+        // Escreve e comita versão 2
+        File.WriteAllText(fullPath, "Versao Dois - Alterado");
+        service.CommitFile(fileName, "Versao 2");
+        
+        // Recupera o histórico
+        var history = service.GetCommitHistory(fileName);
+        history.Count.Should().BeGreaterThanOrEqualTo(2);
+        
+        // O commit "Versao 1" deve ser o mais antigo (último da lista)
+        var firstCommitLine = history.Last(h => h.Contains("Versao 1"));
+        var firstCommitSha = firstCommitLine.Split('|')[0].Trim();
+        
+        // Executa restauração para a Versão 1
+        service.RestoreFileVersion(fileName, firstCommitSha);
+        
+        // Valida se os bytes originais voltaram para o disco
+        var contentOnDisk = File.ReadAllText(fullPath);
+        contentOnDisk.Should().Be("Versao Um - Conteudo Original");
+    }
+
     public void Dispose()
     {
         if (!Directory.Exists(_testPath)) return;

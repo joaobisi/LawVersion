@@ -101,6 +101,50 @@ public class VersionControlService : IVersionControlService
         }
     }
 
+    public void RestoreFileVersion(string fileName, string commitSha)
+    {
+        lock (_gitLock)
+        {
+            try
+            {
+                using var repo = new Repository(_repoPath);
+                var commit = repo.Lookup<Commit>(commitSha) 
+                    ?? repo.Commits.FirstOrDefault(c => c.Sha.StartsWith(commitSha, StringComparison.OrdinalIgnoreCase));
+
+                if (commit == null)
+                {
+                    throw new Exception($"Commit '{commitSha}' não encontrado.");
+                }
+
+                var entry = commit.Tree[fileName];
+                if (entry == null)
+                {
+                    throw new Exception($"Arquivo '{fileName}' não encontrado no commit '{commitSha}'.");
+                }
+
+                var blob = entry.Target as Blob;
+                if (blob == null)
+                {
+                    throw new Exception($"Objeto de arquivo inválido no commit '{commitSha}'.");
+                }
+
+                var fullPath = Path.Combine(_repoPath, fileName);
+                
+                // Sobrescreve os bytes do arquivo físico
+                using var stream = blob.GetContentStream();
+                using var fileStream = File.Create(fullPath);
+                stream.CopyTo(fileStream);
+
+                _logger?.LogInformation("Arquivo {File} restaurado para a versão {Sha}", fileName, commitSha);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Erro ao restaurar versão {Sha} do arquivo {File}", commitSha, fileName);
+                throw;
+            }
+        }
+    }
+
     private static Signature CreateSignature()
     {
         return new Signature("LawVersion", "sistema@lawversion.local", DateTimeOffset.Now);

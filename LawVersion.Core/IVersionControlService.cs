@@ -7,4 +7,6 @@ public interface IVersionControlService
     void CommitFile(string fileName, string message);
     
     List<string> GetCommitHistory(string fileName);
+
+    void RestoreFileVersion(string fileName, string commitSha);
 }
