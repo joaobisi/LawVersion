@@ -265,7 +265,7 @@ public class P2PManager : IDisposable, ILockEventBus
             _watcher.BeginSync(fileName);
             
             File.WriteAllBytes(fullPath, content);
-            _versionService.CommitFile(fileName, $"Sync: {fileName} recebido de {sender}");
+            _versionService.CommitFile(fileName, $"Recebido de {sender}");
             
             _logger.LogInformation("[P2P] Arquivo sincronizado: {File} de {Sender}", fileName, sender);
             OnFolderChanged?.Invoke();
@@ -349,6 +349,12 @@ public class P2PManager : IDisposable, ILockEventBus
         }
 
         _versionService.RestoreFileVersion(fileName, commitSha);
+    }
+
+    public void ExtractFileToVersion(string fileName, string commitSha, string destinationPath)
+    {
+        if (_disposed) return;
+        _versionService.ExtractFileVersion(fileName, commitSha, destinationPath);
     }
 
     // Notifica todos os pares conhecidos via gRPC de que um arquivo foi travado localmente.

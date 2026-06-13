@@ -127,14 +127,25 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Margin="0,4" Padding="12,10" Background="#181825" CornerRadius="8">
-                                        <Grid ColumnDefinitions="Auto, *, Auto">
+                                        <Grid ColumnDefinitions="Auto, *, Auto, Auto">
                                             <TextBlock Grid.Column="0" Text="🔹" Foreground="#89B4FA" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayText}" FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                             
-                                            <Button Grid.Column="2" Content="Restaurar"
+                                            <Button Grid.Column="2" Content="Visualizar"
+                                                    Command="{Binding #RootWindow.DataContext.ViewVersionCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    IsVisible="{Binding Sha, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                    Background="#89B4FA" Foreground="#1E1E2E"
+                                                    FontSize="10" Padding="8,4" CornerRadius="4"
+                                                    VerticalAlignment="Center" Margin="8,0,0,0"
+                                                    Cursor="Hand"/>
+                                            
+                                            <Button Grid.Column="3" Content="Restaurar"
                                                     Command="{Binding #RootWindow.DataContext.RestoreVersionCommand}"
                                                     CommandParameter="{Binding}"
-                                                    Background="#A6E3A1" Foreground="#1E1E2E"
+                                                    IsVisible="{Binding Sha, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                    IsEnabled="{Binding !#RootWindow.DataContext.IsSelectedDocumentLockedByOther}"
+                                                    Background="#F38BA8" Foreground="#1E1E2E"
                                                     FontSize="10" Padding="8,4" CornerRadius="4"
                                                     VerticalAlignment="Center" Margin="8,0,0,0"
                                                     Cursor="Hand"/>
@@ -245,6 +256,37 @@
                                     IsEnabled="{Binding ImportFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                     Background="#89B4FA" Foreground="#1E1E2E" Padding="10" Margin="6,0,0,0"
+                                    FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Grid Background="#A0000000" 
+              IsVisible="{Binding IsConfirmRestoreVisible}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+            <Border Background="#1E1E2E" CornerRadius="12" BorderBrush="#313244" BorderThickness="1"
+                    Width="400" Height="220" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="24">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="⚠️ Confirmar Restauração" 
+                               FontSize="16" FontWeight="Bold" Foreground="#F38BA8" Margin="0,0,0,12"/>
+                    
+                    <StackPanel Spacing="16" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ConfirmRestoreMessage}" 
+                                   Foreground="#CDD6F4" FontSize="13" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" TextAlignment="Center"/>
+                        
+                        <Grid ColumnDefinitions="*, *">
+                            <Button Grid.Column="0" Content="Cancelar" 
+                                    Command="{Binding CancelRestoreCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Background="Transparent" Foreground="#F38BA8" Padding="10" Margin="0,0,6,0"/>
+                            <Button Grid.Column="1" Content="Confirmar" 
+                                    Command="{Binding ConfirmRestoreCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                    Background="#F38BA8" Foreground="#1E1E2E" Padding="10" Margin="6,0,0,0"
                                     FontWeight="SemiBold"/>
                         </Grid>
                     </StackPanel>

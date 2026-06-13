@@ -87,7 +87,7 @@ public class VersionControlService : IVersionControlService
                      c.Tree[fileName].Target.Id != c.Parents.First().Tree[fileName]?.Target.Id) :
                     c.Tree[fileName] != null)
                 .Take(50) // Limita para performance
-                .Select(c => $"{c.Id.ToString(7)} | {c.Author.When:yyyy-MM-dd} | {c.MessageShort}")
+                .Select(c => $"{c.Id.ToString(7)} | {c.Author.When:dd/MM/yyyy} | {c.MessageShort}")
                 .ToList();
 
             return commits.Count > 0 
@@ -102,6 +102,13 @@ public class VersionControlService : IVersionControlService
     }
 
     public void RestoreFileVersion(string fileName, string commitSha)
+    {
+        var fullPath = Path.Combine(_repoPath, fileName);
+        ExtractFileVersion(fileName, commitSha, fullPath);
+        _logger?.LogInformation("Arquivo {File} restaurado para a versão {Sha}", fileName, commitSha);
+    }
+
+    public void ExtractFileVersion(string fileName, string commitSha, string destinationPath)
     {
         lock (_gitLock)
         {
@@ -128,18 +135,23 @@ public class VersionControlService : IVersionControlService
                     throw new Exception($"Objeto de arquivo inválido no commit '{commitSha}'.");
                 }
 
-                var fullPath = Path.Combine(_repoPath, fileName);
-                
-                // Sobrescreve os bytes do arquivo físico
+                // Cria o diretório de destino se não existir
+                var dir = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                // Sobrescreve/salva os bytes no caminho de destino
                 using var stream = blob.GetContentStream();
-                using var fileStream = File.Create(fullPath);
+                using var fileStream = File.Create(destinationPath);
                 stream.CopyTo(fileStream);
 
-                _logger?.LogInformation("Arquivo {File} restaurado para a versão {Sha}", fileName, commitSha);
+                _logger?.LogInformation("Arquivo {File} extraído do commit {Sha} para {Dest}", fileName, commitSha, destinationPath);
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Erro ao restaurar versão {Sha} do arquivo {File}", commitSha, fileName);
+                _logger?.LogError(ex, "Erro ao extrair versão {Sha} do arquivo {File} para {Dest}", commitSha, fileName, destinationPath);
                 throw;
             }
         }
