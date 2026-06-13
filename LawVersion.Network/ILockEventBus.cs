@@ -20,4 +20,9 @@ public interface ILockEventBus
     /// Chamado quando um arquivo é recebido de um par remoto via PushVersion.
     /// </summary>
     void OnRemoteFileReceived(string fileName, byte[] content, string sender);
+
+    /// <summary>
+    /// Chamado quando uma notificação de conclusão/finalização de arquivo é recebida via gRPC.
+    /// </summary>
+    void OnRemoteFileCompleted(string fileName, string sender);
 }
