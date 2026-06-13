@@ -111,7 +111,7 @@ public class DocumentWatcher : IDisposable
         {
             try
             {
-                _versionService.CommitFile(fileName, $"Auto-save: {fileName}");
+                _versionService.CommitFile(fileName, "Salvo");
                 FileChanged?.Invoke(this, e);
                 _logger.LogInformation("Arquivo versionado (debounced): {File}", fileName);
             }

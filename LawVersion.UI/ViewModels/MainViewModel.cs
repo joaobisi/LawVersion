@@ -25,7 +25,12 @@ public partial class MainViewModel : ObservableObject
     
     [ObservableProperty] private bool _isHistoryVisible = false;
     [ObservableProperty] private string _selectedDocumentName = string.Empty;
-    public ObservableCollection<string> SelectedFileHistoryLines { get; } = new();
+    [ObservableProperty] private bool _isSelectedDocumentLockedByOther = false;
+    public ObservableCollection<HistoryItemViewModel> SelectedFileHistoryLines { get; } = new();
+
+    [ObservableProperty] private bool _isConfirmRestoreVisible = false;
+    [ObservableProperty] private string _confirmRestoreMessage = string.Empty;
+    private HistoryItemViewModel? _pendingRestoreItem;
 
     [ObservableProperty] private bool _isShareModalVisible = false;
     [ObservableProperty] private DocumentItem? _sharingDocument = null;
@@ -103,19 +108,45 @@ public partial class MainViewModel : ObservableObject
         if (doc is null || _p2P is null) return;
         
         SelectedDocumentName = doc.Name;
+        IsSelectedDocumentLockedByOther = doc.IsLockedByOther;
         SelectedFileHistoryLines.Clear();
         
         var historyList = _p2P.GetFileHistory(doc.Name);
-        if (historyList.Any())
+        var validCommits = historyList.Where(l => l.Contains('|')).ToList();
+
+        if (validCommits.Any())
         {
-            foreach (var line in historyList)
+            int total = validCommits.Count;
+            for (int i = 0; i < total; i++)
             {
-                SelectedFileHistoryLines.Add(line);
+                var line = validCommits[i];
+                var parts = line.Split('|');
+                var sha = parts[0].Trim();
+                var date = parts[1].Trim();
+                var msg = string.Join("|", parts.Skip(2)).Trim();
+
+                var verNum = total - i;
+                SelectedFileHistoryLines.Add(new HistoryItemViewModel
+                {
+                    VersionTag = $"v{verNum}",
+                    Sha = sha,
+                    Date = date,
+                    Message = msg,
+                    RawLine = line
+                });
             }
         }
         else
         {
-            SelectedFileHistoryLines.Add("Sem registros de alterações ainda.");
+            var displayMsg = historyList.FirstOrDefault() ?? "Sem registros de alterações ainda.";
+            SelectedFileHistoryLines.Add(new HistoryItemViewModel
+            {
+                VersionTag = "-",
+                Sha = string.Empty,
+                Date = string.Empty,
+                Message = displayMsg,
+                RawLine = string.Empty
+            });
         }
         
         IsHistoryVisible = true;
@@ -128,26 +159,85 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void RestoreVersion(string? historyLine)
+    private void ViewVersion(HistoryItemViewModel? item)
     {
-        if (string.IsNullOrEmpty(historyLine) || string.IsNullOrEmpty(SelectedDocumentName) || _p2P == null) return;
+        if (item is null || string.IsNullOrEmpty(item.Sha) || string.IsNullOrEmpty(SelectedDocumentName) || _p2P is null) return;
 
         try
         {
-            var parts = historyLine.Split('|');
-            if (parts.Length < 1) return;
-            var sha = parts[0].Trim();
+            var ext = Path.GetExtension(SelectedDocumentName);
+            var baseName = Path.GetFileNameWithoutExtension(SelectedDocumentName);
+            
+            var tempFileName = $"{baseName}_{item.VersionTag}{ext}";
+            var tempPath = Path.Combine(Path.GetTempPath(), tempFileName);
+
+            if (File.Exists(tempPath))
+            {
+                File.SetAttributes(tempPath, FileAttributes.Normal);
+                File.Delete(tempPath);
+            }
+
+            _p2P.ExtractFileToVersion(SelectedDocumentName, item.Sha, tempPath);
+            File.SetAttributes(tempPath, FileAttributes.ReadOnly);
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                Process.Start("xdg-open", tempPath);
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                Process.Start(new ProcessStartInfo(tempPath) { UseShellExecute = true });
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                Process.Start("open", tempPath);
+
+            StatusMessage = $"Visualizando {tempFileName} (somente leitura)...";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erro ao visualizar versão: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void RestoreVersion(HistoryItemViewModel? item)
+    {
+        if (item is null || string.IsNullOrEmpty(item.Sha) || string.IsNullOrEmpty(SelectedDocumentName) || _p2P == null) return;
+
+        _pendingRestoreItem = item;
+        ConfirmRestoreMessage = $"Você está prestes a reverter o documento '{SelectedDocumentName}' para a versão {item.VersionTag}.\n\nIsso substituirá o arquivo de trabalho atual para você e todos os colegas na rede. Deseja continuar?";
+        IsConfirmRestoreVisible = true;
+    }
+
+    [RelayCommand]
+    private void ConfirmRestore()
+    {
+        if (_pendingRestoreItem == null || string.IsNullOrEmpty(SelectedDocumentName) || _p2P == null) return;
+
+        try
+        {
+            var sha = _pendingRestoreItem.Sha;
+            var tag = _pendingRestoreItem.VersionTag;
 
             _p2P.RestoreFileToVersion(SelectedDocumentName, sha);
-            StatusMessage = $"Versão {sha} do arquivo '{SelectedDocumentName}' restaurada com sucesso!";
+            StatusMessage = $"Versão {tag} ({sha}) do arquivo '{SelectedDocumentName}' restaurada com sucesso!";
+            
+            IsConfirmRestoreVisible = false;
             IsHistoryVisible = false;
+            _pendingRestoreItem = null;
             
             RefreshFiles();
         }
         catch (Exception ex)
         {
             StatusMessage = $"Erro ao restaurar: {ex.Message}";
+            IsConfirmRestoreVisible = false;
+            IsHistoryVisible = false;
+            _pendingRestoreItem = null;
         }
+    }
+
+    [RelayCommand]
+    private void CancelRestore()
+    {
+        _pendingRestoreItem = null;
+        IsConfirmRestoreVisible = false;
     }
 
     [RelayCommand]

@@ -9,4 +9,6 @@ public interface IVersionControlService
     List<string> GetCommitHistory(string fileName);
 
     void RestoreFileVersion(string fileName, string commitSha);
+
+    void ExtractFileVersion(string fileName, string commitSha, string destinationPath);
 }

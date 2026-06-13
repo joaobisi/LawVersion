@@ -76,6 +76,42 @@ public class VersionControlTests : IDisposable
         contentOnDisk.Should().Be("Versao Um - Conteudo Original");
     }
 
+    [Fact]
+    public void Deve_Extrair_Versao_Anterior_Do_Arquivo()
+    {
+        var service = new VersionControlService(_testPath);
+        service.InitializeRepository(_testPath);
+        
+        string fileName = "contrato.docx";
+        string fullPath = Path.Combine(_testPath, fileName);
+        
+        // Escreve e comita versão 1
+        File.WriteAllText(fullPath, "Conteudo Versao Um");
+        service.CommitFile(fileName, "Versao 1");
+        
+        // Escreve e comita versão 2
+        File.WriteAllText(fullPath, "Conteudo Versao Dois");
+        service.CommitFile(fileName, "Versao 2");
+        
+        // Recupera o histórico
+        var history = service.GetCommitHistory(fileName);
+        var firstCommitLine = history.Last(h => h.Contains("Versao 1"));
+        var firstCommitSha = firstCommitLine.Split('|')[0].Trim();
+        
+        // Caminho de destino da extração
+        string destPath = Path.Combine(_testPath, "contrato_extraido.docx");
+        
+        // Executa extração da Versão 1 para o destino
+        service.ExtractFileVersion(fileName, firstCommitSha, destPath);
+        
+        // Valida se o arquivo de destino foi criado e tem o conteúdo correto
+        File.Exists(destPath).Should().BeTrue();
+        File.ReadAllText(destPath).Should().Be("Conteudo Versao Um");
+        
+        // O arquivo original não deve ter sido modificado (ainda deve ser Versao 2)
+        File.ReadAllText(fullPath).Should().Be("Conteudo Versao Dois");
+    }
+
     public void Dispose()
     {
         if (!Directory.Exists(_testPath)) return;
