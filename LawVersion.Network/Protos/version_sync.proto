@@ -17,6 +17,9 @@ service VersionSync {
 
   // Envia ou solicita os bytes de um arquivo .docx
   rpc PushVersion (FileFrame) returns (SyncResponse);
+
+  // Notifica que um arquivo foi concluído/finalizado
+  rpc NotifyFileCompleted (FileCompletedRequest) returns (SyncResponse);
 }
 
 message EmptyRequest {}
@@ -51,4 +54,9 @@ message FileFrame {
 message SyncResponse {
   bool success = 1;
   string message = 2;
+}
+
+message FileCompletedRequest {
+  string fileName = 1;
+  string lawyerName = 2;
 }

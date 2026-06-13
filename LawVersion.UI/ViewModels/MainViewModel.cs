@@ -12,6 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 using Avalonia.Threading;
 using Avalonia.Platform.Storage;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 
 namespace LawVersion.UI.ViewModels;
 
@@ -31,6 +32,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isConfirmRestoreVisible = false;
     [ObservableProperty] private string _confirmRestoreMessage = string.Empty;
     private HistoryItemViewModel? _pendingRestoreItem;
+
+    [ObservableProperty] private bool _isCompletionNotificationVisible = false;
+    [ObservableProperty] private string _completionNotificationMessage = string.Empty;
 
     [ObservableProperty] private bool _isShareModalVisible = false;
     [ObservableProperty] private DocumentItem? _sharingDocument = null;
@@ -86,6 +90,17 @@ public partial class MainViewModel : ObservableObject
 
         _p2P.OnFileLocked += (fileName, owner) => AtualizarEstadoLock(fileName, owner);
         _p2P.OnFileUnlocked += (fileName) => AtualizarEstadoLock(fileName, string.Empty);
+        _p2P.OnFileCompleted += (fileName, sender) =>
+        {
+            Dispatcher.UIThread.Post(() => {
+                RefreshFiles();
+                if (sender != LawyerName)
+                {
+                    CompletionNotificationMessage = $"O documento '{fileName}' foi concluído por {sender} e removido do painel.";
+                    IsCompletionNotificationVisible = true;
+                }
+            });
+        };
     }
 
     private void AtualizarEstadoLock(string fileName, string owner)
@@ -238,6 +253,13 @@ public partial class MainViewModel : ObservableObject
     {
         _pendingRestoreItem = null;
         IsConfirmRestoreVisible = false;
+    }
+
+    [RelayCommand]
+    private void CloseCompletionNotification()
+    {
+        IsCompletionNotificationVisible = false;
+        CompletionNotificationMessage = string.Empty;
     }
 
     [RelayCommand]
@@ -414,6 +436,57 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"Erro ao abrir: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task CompleteDocument(DocumentItem? doc)
+    {
+        if (doc is null || _p2P is null) return;
+
+        // Validar lock
+        var owner = _p2P.GetFileOwner(doc.Name);
+        if (!string.IsNullOrEmpty(owner) && owner != LawyerName)
+        {
+            StatusMessage = $"Não é possível concluir: o arquivo está bloqueado por {owner}.";
+            return;
+        }
+
+        // Obter Window principal via ApplicationLifetime
+        if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var mainWindow = desktop.MainWindow;
+            if (mainWindow is null) return;
+
+            var topLevel = TopLevel.GetTopLevel(mainWindow);
+            if (topLevel?.StorageProvider is null) return;
+
+            // Abrir diálogo de salvar arquivo
+            var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Exportar Versão Final do Documento",
+                SuggestedFileName = doc.Name,
+                FileTypeChoices = new[]
+                {
+                    new FilePickerFileType("Documentos Word") { Patterns = new[] { "*.docx" } }
+                }
+            });
+
+            if (file is not null)
+            {
+                var destinationPath = Uri.UnescapeDataString(file.Path.LocalPath);
+                try
+                {
+                    await _p2P.CompleteFileAsync(doc.Name, destinationPath);
+                    CompletionNotificationMessage = $"O documento '{doc.Name}' foi concluído e exportado com sucesso!";
+                    IsCompletionNotificationVisible = true;
+                    RefreshFiles();
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"Erro ao concluir documento: {ex.Message}";
+                }
+            }
         }
     }
 

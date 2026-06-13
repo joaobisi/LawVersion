@@ -38,6 +38,7 @@ public class P2PManager : IDisposable, ILockEventBus
     public event Action<string, string>? OnPeerDetected;
     public event Action<string, string>? OnFileLocked;   
     public event Action<string>? OnFileUnlocked;
+    public event Action<string, string>? OnFileCompleted;
 
     public string WorkingDirectory => _workingDirectory;
     public string LawyerName => _lawyerName;
@@ -276,7 +277,44 @@ public class P2PManager : IDisposable, ILockEventBus
         }
         finally
         {
-            Task.Delay(2000).ContinueWith(_ => _watcher.EndSync(fileName));
+            _ = Task.Delay(2000).ContinueWith(_ => _watcher.EndSync(fileName));
+        }
+    }
+
+    void ILockEventBus.OnRemoteFileCompleted(string fileName, string sender)
+    {
+        try
+        {
+            _logger.LogInformation("[P2P] Notificação de conclusão de arquivo recebida: {File} por {Sender}", fileName, sender);
+            
+            // Remove lock local se houver
+            _localLocks.TryRemove(fileName, out _);
+            OnFileUnlocked?.Invoke(fileName);
+
+            // Apaga arquivo do workspace
+            var fullPath = Path.Combine(_workingDirectory, fileName);
+            if (File.Exists(fullPath))
+            {
+                _watcher.BeginSync(fileName);
+                File.Delete(fullPath);
+                _logger.LogInformation("[P2P] Arquivo local excluído após conclusão: {File}", fileName);
+            }
+            
+            // Remove do shares
+            _sharedPeers.TryRemove(fileName, out _);
+            SaveShares();
+            
+            // Dispara o evento de conclusão para a UI
+            OnFileCompleted?.Invoke(fileName, sender);
+            OnFolderChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[P2P] Erro ao tratar conclusão remota do arquivo: {File}", fileName);
+        }
+        finally
+        {
+            _ = Task.Delay(2000).ContinueWith(_ => _watcher.EndSync(fileName));
         }
     }
 
@@ -355,6 +393,82 @@ public class P2PManager : IDisposable, ILockEventBus
     {
         if (_disposed) return;
         _versionService.ExtractFileVersion(fileName, commitSha, destinationPath);
+    }
+
+    public async Task CompleteFileAsync(string fileName, string targetPath)
+    {
+        if (_disposed) return;
+
+        // Validar se o arquivo está bloqueado por outro advogado
+        var owner = GetFileOwner(fileName);
+        if (!string.IsNullOrEmpty(owner) && owner != _lawyerName)
+        {
+            throw new InvalidOperationException($"Não é possível concluir o arquivo. Ele está bloqueado por {owner}.");
+        }
+
+        var fullPath = Path.Combine(_workingDirectory, fileName);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("Arquivo não encontrado no diretório de trabalho.", fullPath);
+        }
+
+        // Exportar o arquivo (copiar para targetPath)
+        File.Copy(fullPath, targetPath, overwrite: true);
+        _logger.LogInformation("[P2P] Arquivo {File} exportado com sucesso para {TargetPath}", fileName, targetPath);
+
+        // Obter a lista de pares que compartilham o arquivo
+        var sharedList = _sharedPeers.TryGetValue(fileName, out var list) ? list.ToList() : new List<string>();
+
+        // Liberar locks locais do arquivo
+        _localLocks.TryRemove(fileName, out _);
+        
+        // Apagar arquivo localmente
+        _watcher.BeginSync(fileName);
+        try
+        {
+            File.Delete(fullPath);
+            _logger.LogInformation("[P2P] Arquivo {File} removido do workspace local.", fileName);
+        }
+        finally
+        {
+            _ = Task.Delay(2000).ContinueWith(_ => _watcher.EndSync(fileName));
+        }
+
+        // Remover do shares
+        _sharedPeers.TryRemove(fileName, out _);
+        SaveShares();
+
+        // Disparar notificação gRPC para todos os participantes compartilhados
+        if (sharedList.Count > 0)
+        {
+            var request = new FileCompletedRequest
+            {
+                FileName = fileName,
+                LawyerName = _lawyerName
+            };
+
+            var peers = _knownPeers.Values.Where(p => sharedList.Contains(p.Name)).ToList();
+            var tasks = peers.Select(async peer =>
+            {
+                try
+                {
+                    using var channel = GrpcChannel.ForAddress(peer.GrpcEndpoint);
+                    var client = new VersionSync.VersionSyncClient(channel);
+                    await client.NotifyFileCompletedAsync(request);
+                    _logger.LogInformation("[P2P] Notificação de conclusão enviada para {Peer}", peer.Name);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("[P2P] Falha ao enviar notificação de conclusão para {Peer}: {Error}", peer.Name, ex.Message);
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        // Disparar evento local de conclusão para a UI
+        OnFileCompleted?.Invoke(fileName, _lawyerName);
+        OnFolderChanged?.Invoke();
     }
 
     // Notifica todos os pares conhecidos via gRPC de que um arquivo foi travado localmente.

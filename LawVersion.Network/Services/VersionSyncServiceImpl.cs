@@ -201,6 +201,17 @@ public class VersionSyncServiceImpl : VersionSync.VersionSyncBase
         });
     }
 
+    public override Task<SyncResponse> NotifyFileCompleted(FileCompletedRequest request, ServerCallContext context)
+    {
+        Console.WriteLine($"[gRPC] Recebida notificação de conclusão do arquivo: {request.FileName} de {request.LawyerName}");
+        _eventBus?.OnRemoteFileCompleted(request.FileName, request.LawyerName);
+        return Task.FromResult(new SyncResponse
+        {
+            Success = true,
+            Message = "Notificação de conclusão de arquivo recebida."
+        });
+    }
+
     /// <summary>
     /// Remove locks cujo LastRenewedAtUtc excedeu o TTL.
     /// Se um nó caiu, seus locks serão limpos automaticamente.
