@@ -19,19 +19,54 @@ public class VersionControlService : IVersionControlService
     {
         _repoPath = workingDirectory;
 
-        if (!Repository.IsValid(_repoPath))
+        if (!Directory.Exists(_repoPath))
+        {
+            Directory.CreateDirectory(_repoPath);
+        }
+
+        var gitAttributesPath = Path.Combine(_repoPath, ".gitattributes");
+        bool isNew = !Repository.IsValid(_repoPath);
+
+        if (isNew)
         {
             Repository.Init(_repoPath);
-            
+        }
+
+        using var repo = new Repository(_repoPath);
+
+        if (isNew)
+        {
             // Configura identidade padrão do Git
-            using var repo = new Repository(_repoPath);
             repo.Config.Set("user.name", "LawVersion");
             repo.Config.Set("user.email", "sistema@lawversion.local");
-            
-            // Cria um commit inicial vazio para evitar erros de 'log' em repositórios novos
-            var signature = CreateSignature();
-            repo.Commit("Repositório LawVersion Inicializado", signature, signature, 
-                new CommitOptions { AllowEmptyCommit = true });
+        }
+
+        // Garante o arquivo .gitattributes para que o Git não corrompa arquivos binários (.docx)
+        if (!File.Exists(gitAttributesPath))
+        {
+            try
+            {
+                File.WriteAllText(gitAttributesPath, "*.docx binary\n");
+                Commands.Stage(repo, ".gitattributes");
+                var signature = CreateSignature();
+                repo.Commit("Adiciona .gitattributes para protecao de binarios", signature, signature);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Falha ao gravar ou commitar .gitattributes inicial");
+            }
+        }
+
+        if (isNew)
+        {
+            // Cria um commit inicial vazio se nenhum commit foi feito
+            try
+            {
+                var signature = CreateSignature();
+                repo.Commit("Repositório LawVersion Inicializado", signature, signature, 
+                    new CommitOptions { AllowEmptyCommit = true });
+            }
+            catch (Exception) { /* Ignora se já tiver commits */ }
             
             _logger?.LogInformation("Repositório Git inicializado em: {Path}", _repoPath);
         }
