@@ -31,6 +31,7 @@ public class DocumentWatcher : IDisposable
         _watcher.Changed += (_, e) => OnFileAction(e);
         _watcher.Created += (_, e) => OnFileAction(e);
         _watcher.Deleted += (_, e) => OnFileAction(e);
+        _watcher.Renamed += (_, e) => OnFileAction(e);
         
         _logger.LogInformation("Monitoramento iniciado na pasta: {Path}", path);
     }
@@ -60,15 +61,14 @@ public class DocumentWatcher : IDisposable
         }
     }
 
-
     // Extrai o nome do arquivo original a partir de um nome de lock file.
     // Suporta padrões do MS Word (~$) e LibreOffice (.~lock.).
     // Retorna null se não for um lock file.
-    internal static string? ExtractOriginalFileName(string fileName)
+    private string? ExtractOriginalFileName(string fileName)
     {
         if (fileName.StartsWith("~$"))
         {
-            return fileName[2..];
+            return FindOriginalFileForWordLock(fileName);
         }
 
         // Verifica se é um lock file do LibreOffice
@@ -79,6 +79,41 @@ public class DocumentWatcher : IDisposable
             return hashIndex >= 0 ? withoutPrefix[..hashIndex] : withoutPrefix;
         }
 
+        return null;
+    }
+
+    private string? FindOriginalFileForWordLock(string lockFileName)
+    {
+        var suffix = lockFileName[2..]; // Ex: "ticao.docx"
+        
+        try
+        {
+            var watchPath = _watcher.Path;
+            if (!Directory.Exists(watchPath)) return null;
+            
+            var files = Directory.GetFiles(watchPath, "*.docx");
+            foreach (var file in files)
+            {
+                var name = Path.GetFileName(file);
+                if (IsLockFileName(name)) continue;
+                
+                if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    // O Word substitui as 2 primeiras letras, então o tamanho do lock file
+                    // é igual ao do original (ex: Peticao.docx e ~$ticao.docx possuem 12 caracteres).
+                    // Para arquivos curtos (ex: a.docx -> ~$a.docx), o lock file tem 2 caracteres a mais.
+                    if (name.Length == lockFileName.Length || name.Length + 2 == lockFileName.Length)
+                    {
+                        return name;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Erro ao buscar arquivo original para o lock file {LockFile}", lockFileName);
+        }
+        
         return null;
     }
 

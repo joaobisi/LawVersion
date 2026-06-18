@@ -12,9 +12,7 @@ public class DiscoveryService : IDiscoveryService
     // Porta padrão para o "Grito" UDP (Beacon)
     private const int DiscoveryPort = 9876; 
     
-    /// <summary>
-    /// Intervalo entre broadcasts de presença (heartbeat).
-    /// </summary>
+    // Intervalo entre broadcasts de presença (heartbeat).
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(5);
 
     private string _myLawyerName = string.Empty;
@@ -100,15 +98,47 @@ public class DiscoveryService : IDiscoveryService
     {
         try 
         {
-            using var client = new UdpClient();
-            client.EnableBroadcast = true;
-            
-            // Enviamos nosso "cartão de visitas" P2P
             string message = $"LawVersion|{lawyerName}|{grpcPort}";
             byte[] data = Encoding.UTF8.GetBytes(message);
-            
             var endpoint = new IPEndPoint(IPAddress.Broadcast, DiscoveryPort);
-            await client.SendAsync(data, data.Length, endpoint);
+
+            var interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces();
+            bool sent = false;
+
+            foreach (var ni in interfaces)
+            {
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up)
+                    continue;
+
+                if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                    continue;
+
+                var ipProps = ni.GetIPProperties();
+                foreach (var addr in ipProps.UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        try
+                        {
+                            using var client = new UdpClient(new IPEndPoint(addr.Address, 0));
+                            client.EnableBroadcast = true;
+                            await client.SendAsync(data, data.Length, endpoint);
+                            sent = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Discovery] Falha ao enviar por {addr.Address}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            if (!sent)
+            {
+                using var fallbackClient = new UdpClient();
+                fallbackClient.EnableBroadcast = true;
+                await fallbackClient.SendAsync(data, data.Length, endpoint);
+            }
         }
         catch (Exception ex)
         {
