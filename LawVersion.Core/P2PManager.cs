@@ -500,6 +500,8 @@ public class P2PManager : IDisposable, ILockEventBus
         
         if (!_sharedPeers.TryGetValue(fileName, out var sharedList) || sharedList.Count == 0) return;
 
+        await SyncFileToPeers(fileName);
+
         _logger.LogInformation("[P2P] Notificando rede (Unlock): {File}", fileName);
         var request = new LockRequest 
         { 
@@ -511,9 +513,6 @@ public class P2PManager : IDisposable, ILockEventBus
             .Where(peer => sharedList.Contains(peer.Name))
             .Select(peer => SendUnlockToPeerAsync(peer, request));
         await Task.WhenAll(tasks);
-        
-        // Envia o arquivo atualizado para todos os peers do círculo
-        await SyncFileToPeers(fileName);
     }
 
     private async Task SyncFileToPeers(string fileName)
